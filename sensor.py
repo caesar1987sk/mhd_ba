@@ -95,21 +95,93 @@ class MhdBaDeparturesSensor(
         self._max_departures = max_departures
         self._filter_lines = filter_lines
 
+    def _calculate_departure_time(
+        self, planned_timestamp: int, delay_minutes: int
+    ) -> int:
+        """Calculate the actual departure time considering delay.
+
+        Args:
+            planned_timestamp: The planned departure timestamp in seconds
+            delay_minutes: The delay in minutes
+
+        Returns:
+            The calculated departure time in seconds
+
+        """
+        return int(planned_timestamp) + (int(delay_minutes) * 60)
+
+    def _calculate_time_until_departure(self, departure_calculated: int) -> int | None:
+        """Calculate the time remaining until departure.
+
+        Args:
+            departure_calculated: The calculated departure time in seconds
+
+        Returns:
+            Time until departure in seconds or None if invalid
+
+        """
+        if departure_calculated is None:
+            return None
+
+        current_timestamp = int(dt_util.utcnow().timestamp())
+        return departure_calculated - current_timestamp
+
     @property
     def native_value(self) -> StateType:
-        """Return the number of upcoming departures after filtering."""
+        """Return the next departure info in format 'line -> destination in X min'."""
         if not self.coordinator.data or "departures" not in self.coordinator.data:
             return None
 
-        if not self._filter_lines:
-            return len(self.coordinator.data["departures"])
-
-        # Count only filtered departures
-        return sum(
-            1
-            for departure in self.coordinator.data["departures"]
-            if self._should_include_departure(departure)
+        # Get departures and filter if needed
+        filtered_departures = (
+            [
+                departure
+                for departure in self.coordinator.data["departures"]
+                if self._should_include_departure(departure)
+            ]
+            if self._filter_lines
+            else self.coordinator.data["departures"]
         )
+
+        # No departures available
+        if not filtered_departures:
+            return None
+
+        # Get the next departure (first in the list)
+        next_departure = filtered_departures[0]
+
+        # Get required data for the formatted string
+        line = (
+            next_departure.get("timeTableTrip", {})
+            .get("timeTableLine", {})
+            .get("line", "Unknown")
+        )
+        destination = next_departure.get("timeTableTrip", {}).get(
+            "destinationStopName", "Unknown"
+        )
+
+        # Calculate minutes until departure
+        planned_timestamp = next_departure.get("plannedDepartureTimestamp")
+        delay_minutes = next_departure.get("delayMinutes", 0)
+
+        if not planned_timestamp:
+            return f"{line} -> {destination}"
+
+        # Calculate actual departure time considering delay
+        departure_calculated = self._calculate_departure_time(
+            planned_timestamp, delay_minutes
+        )
+        time_until_departure_seconds = self._calculate_time_until_departure(
+            departure_calculated
+        )
+
+        if time_until_departure_seconds is None or time_until_departure_seconds <= 0:
+            minutes_until_departure = 0
+        else:
+            minutes_until_departure = int(time_until_departure_seconds / 60)
+
+        # Format the return value
+        return f"{line} -> {destination} in {minutes_until_departure} min"
 
     def _should_include_departure(self, departure: dict[str, Any]) -> bool:
         """Check if departure should be included based on filter_lines."""
@@ -166,12 +238,11 @@ class MhdBaDeparturesSensor(
                 departure_calculated = None
                 time_until_calculated_departure = None
                 if planned_timestamp:
-                    departure_calculated = int(planned_timestamp) + (
-                        int(delay_minutes) * 60
+                    departure_calculated = self._calculate_departure_time(
+                        planned_timestamp, delay_minutes
                     )
-                    current_timestamp = int(dt_util.utcnow().timestamp())
                     time_until_calculated_departure = (
-                        departure_calculated - current_timestamp
+                        self._calculate_time_until_departure(departure_calculated)
                     )
 
                 attributes["departures"].append(
