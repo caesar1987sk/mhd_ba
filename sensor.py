@@ -1,0 +1,215 @@
+"""Sensor platform for MHD BA integration."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+import logging
+from typing import Any
+
+from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.typing import StateType
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
+
+from .config_flow import generate_unique_id
+from .const import CONF_FILTER_LINES, CONF_MAX_DEPARTURES, CONF_STOP_ID, DOMAIN
+from .coordinator import MhdBaDataUpdateCoordinator
+
+_LOGGER = logging.getLogger(__name__)
+
+
+@dataclass
+class MhdBaSensorEntityDescription(SensorEntityDescription):
+    """Class describing MHD BA sensor entities."""
+
+
+SENSOR_TYPES: tuple[MhdBaSensorEntityDescription, ...] = (
+    MhdBaSensorEntityDescription(
+        key="departures",
+        name="Departures",
+        icon="mdi:bus-clock",
+    ),
+)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
+    """Set up the MHD BA sensors."""
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+
+    async_add_entities(
+        MhdBaDeparturesSensor(
+            coordinator=coordinator,
+            entity_description=description,
+            entry=entry,
+            max_departures=entry.data.get(CONF_MAX_DEPARTURES, 10),
+            filter_lines=entry.data.get(CONF_FILTER_LINES, []),
+        )
+        for description in SENSOR_TYPES
+    )
+
+
+class MhdBaDeparturesSensor(
+    CoordinatorEntity[MhdBaDataUpdateCoordinator], SensorEntity
+):
+    """Representation of a MHD BA departures sensor."""
+
+    entity_description: MhdBaSensorEntityDescription
+
+    def __init__(
+        self,
+        coordinator: MhdBaDataUpdateCoordinator,
+        entity_description: MhdBaSensorEntityDescription,
+        entry: ConfigEntry,
+        max_departures: int,
+        filter_lines: list[str],
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self.entity_description = entity_description
+
+        # Generate unique ID using the same function as in config_flow
+        stop_id = entry.data.get(CONF_STOP_ID)
+        base_unique_id = generate_unique_id(stop_id, filter_lines)
+        self._attr_unique_id = f"{base_unique_id}_{entity_description.key}"
+
+        stop_name = (
+            self.coordinator.data.get("stop_name")
+            if self.coordinator.data
+            and self.coordinator.data.get("stop_name") is not None
+            else stop_id
+        )
+
+        # Create a more descriptive name that includes filtered lines if any
+        name = f"Bus Stop {stop_name} {entity_description.name}"
+        if filter_lines:
+            name += f" (Lines: {', '.join(filter_lines)})"
+        self._attr_name = name
+
+        self._stop_id = self.coordinator.stop_id
+        self._max_departures = max_departures
+        self._filter_lines = filter_lines
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the number of upcoming departures after filtering."""
+        if not self.coordinator.data or "departures" not in self.coordinator.data:
+            return None
+
+        if not self._filter_lines:
+            return len(self.coordinator.data["departures"])
+
+        # Count only filtered departures
+        return sum(
+            1
+            for departure in self.coordinator.data["departures"]
+            if self._should_include_departure(departure)
+        )
+
+    def _should_include_departure(self, departure: dict[str, Any]) -> bool:
+        """Check if departure should be included based on filter_lines."""
+        if not self._filter_lines:
+            return True
+
+        line = departure.get("timeTableTrip", {}).get("timeTableLine", {}).get("line")
+        return line in self._filter_lines if line else False
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the state attributes."""
+        attributes: dict[str, Any] = {
+            "last_update": self.coordinator.data.get("last_update"),
+            "departures": [],
+            "stop_name": None,
+            "stopping_lines": [],
+            "max_departures": self._max_departures,
+            "filter_lines": self._filter_lines,
+        }
+
+        if not self.coordinator.data:
+            return attributes
+
+        # Add the stop name if available
+        if self.coordinator.data.get("stop_name"):
+            attributes["stop_name"] = self.coordinator.data["stop_name"]
+
+        # Add the stopping lines if available
+        if self.coordinator.data.get("stopping_lines"):
+            attributes["stopping_lines"] = self.coordinator.data["stopping_lines"]
+
+        # Add departure information
+        if "departures" in self.coordinator.data:
+            attributes["departures"] = []
+
+            # Apply line filter if specified
+            filtered_departures = (
+                [
+                    departure
+                    for departure in self.coordinator.data["departures"]
+                    if self._should_include_departure(departure)
+                ]
+                if self._filter_lines
+                else self.coordinator.data["departures"]
+            )
+
+            # Apply max_departures limit
+            for departure in filtered_departures[: self._max_departures]:
+                planned_timestamp = departure.get("plannedDepartureTimestamp")
+                delay_minutes = departure.get("delayMinutes", 0)
+
+                # Calculate departure_calculated once to reuse
+                departure_calculated = None
+                time_until_calculated_departure = None
+                if planned_timestamp:
+                    departure_calculated = int(planned_timestamp) + (
+                        int(delay_minutes) * 60
+                    )
+                    current_timestamp = int(dt_util.utcnow().timestamp())
+                    time_until_calculated_departure = (
+                        departure_calculated - current_timestamp
+                    )
+
+                attributes["departures"].append(
+                    {
+                        "line": departure.get("timeTableTrip", {})
+                        .get("timeTableLine", {})
+                        .get("line", "Unknown"),
+                        "planed_departure": planned_timestamp,
+                        "planed_departure_formatted": dt_util.as_local(
+                            datetime.fromtimestamp(
+                                planned_timestamp or 0,
+                                tz=dt_util.UTC,
+                            )
+                        ).strftime("%H:%M")
+                        if planned_timestamp
+                        else None,
+                        "delay": delay_minutes,
+                        "departute_calculated": departure_calculated,
+                        "calculated_departure_formatted": dt_util.as_local(
+                            datetime.fromtimestamp(
+                                departure_calculated or 0,
+                                tz=dt_util.UTC,
+                            )
+                        ).strftime("%H:%M")
+                        if departure_calculated
+                        else None,
+                        "seconds_until_departure": time_until_calculated_departure
+                        if departure_calculated
+                        else None,
+                        "minutes_until_departure": int(
+                            time_until_calculated_departure / 60
+                        )
+                        if departure_calculated and time_until_calculated_departure
+                        else None,
+                        "destination": departure.get("timeTableTrip", {}).get(
+                            "destinationStopName", "Unknown"
+                        ),
+                        "platform": departure.get("platformNumber", None),
+                    }
+                )
+        return attributes

@@ -1,0 +1,44 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to MHD BA",
+        "description": "Set up MHD BA bus departures monitoring. You need to provide your bus stop ID.",
+        "data": {
+          "stop_id": "Bus Stop ID",
+          "max_departures": "Maximum number of departures (1-1000)",
+          "filter_lines": "Filter Lines"
+        },
+        "data_description": {
+          "filter_lines": "Display only specific lines (comma or semicolon-separated list of line numbers). Leave empty to show all lines. \nExample: 41,5,N33 or 5;7"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to MHD BA API",
+      "invalid_stop_id": "Invalid stop ID provided",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "This bus stop with the same line filters is already configured"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "departures": {
+        "name": "Departures",
+        "state_attributes": {
+          "departures": {
+            "name": "Upcoming Departures"
+          },
+          "stop_name": {
+            "name": "Stop Name"
+          },
+          "last_update": {
+            "name": "Last Update"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "domain": "mhd_ba",
+  "name": "MHD BA Bus Departures",
+  "documentation": "https://github.com/home-assistant/core/tree/dev/config/custom_components/mhd_ba",
+  "dependencies": [],
+  "codeowners": [],
+  "requirements": [],
+  "iot_class": "cloud_polling",
+  "version": "0.1.0",
+  "config_flow": true
+}
