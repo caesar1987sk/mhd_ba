@@ -15,7 +15,6 @@ from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .config_flow import generate_unique_id
 from .const import (
     CONF_DIRECTION,
     CONF_FILTER_LINES,
@@ -26,6 +25,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import MhdBaDataUpdateCoordinator
+from .helpers import generate_name, generate_unique_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -89,6 +89,7 @@ class MhdBaDeparturesSensor(
         base_unique_id = generate_unique_id(stop_id, filter_lines, self._direction)
         self._attr_unique_id = f"{base_unique_id}_{entity_description.key}"
 
+        # Use coordinator's stop_name if available, otherwise use stop_id
         stop_name = (
             self.coordinator.data.get("stop_name")
             if self.coordinator.data
@@ -96,21 +97,8 @@ class MhdBaDeparturesSensor(
             else stop_id
         )
 
-        # Create a more descriptive name that includes filtered lines if any
-        name = f"Bus Stop {stop_name} {entity_description.name}"
-        if filter_lines:
-            name += f" (Lines: {', '.join(filter_lines)})"
-
-        # Add direction to the name if it's not "all"
-        if self._direction != DIRECTION_ALL:
-            direction_name = (
-                "direction here"
-                if self._direction == DIRECTION_HERE
-                else "direction there"
-            )
-            name += f" {direction_name}"
-
-        self._attr_name = name
+        # Use common name generation function and append entity description name
+        self._attr_name = f"{generate_name(stop_name, filter_lines, self._direction)} {entity_description.name}"
 
         self._stop_id = self.coordinator.stop_id
         self._max_departures = max_departures

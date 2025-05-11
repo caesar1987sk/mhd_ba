@@ -29,6 +29,7 @@ from .const import (
     DOMAIN,
     STOP_INFO_API_ENDPOINT,
 )
+from .helpers import generate_name, generate_unique_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,24 +71,6 @@ def parse_filter_lines(filter_lines: str) -> list[str]:
     return [line.strip() for line in lines if line.strip()]
 
 
-def generate_unique_id(stop_id: str, filter_lines: list[str], direction: str) -> str:
-    """Generate a unique ID combining stop ID, filtered lines, and direction."""
-    # Start with stop_id as base
-    unique_id_parts = [stop_id]
-
-    # Add sorted lines if present
-    if filter_lines:
-        # Sort to ensure consistent IDs regardless of input order
-        sorted_lines = sorted(filter_lines)
-        unique_id_parts.append("-".join(sorted_lines))
-
-    # Add direction if it's not the default "all"
-    if direction != DIRECTION_ALL:
-        unique_id_parts.append(direction)
-
-    return "_".join(unique_id_parts)
-
-
 class MhdBaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for MHD BA."""
 
@@ -121,19 +104,8 @@ class MhdBaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(unique_id)
                 self._abort_if_unique_id_configured()
 
-                # Create entry title based on stop ID and filtered lines
-                title = f"Bus Stop {stop_id}"
-                if filter_lines:
-                    title += f" (Lines: {', '.join(filter_lines)})"
-
-                # Add direction to the title if it's not "all"
-                if user_input[CONF_DIRECTION] != DIRECTION_ALL:
-                    direction_name = (
-                        "direction here"
-                        if user_input[CONF_DIRECTION] == DIRECTION_HERE
-                        else "direction there"
-                    )
-                    title += f" {direction_name}"
+                # Create title using the generate_name function
+                title = generate_name(stop_id, filter_lines, user_input[CONF_DIRECTION])
 
                 return self.async_create_entry(
                     title=title,
