@@ -288,7 +288,7 @@ class MhdBaDeparturesSensor(
                         if planned_timestamp
                         else None,
                         "delay": delay_minutes,
-                        "departute_calculated": departure_calculated,
+                        "departure_calculated": departure_calculated,
                         "calculated_departure_formatted": dt_util.as_local(
                             datetime.fromtimestamp(
                                 departure_calculated or 0,
