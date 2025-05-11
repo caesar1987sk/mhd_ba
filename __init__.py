@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import CONF_STOP_ID, DOMAIN
+from .const import CONF_DIRECTION, CONF_STOP_ID, DEFAULT_DIRECTION, DOMAIN
 from .coordinator import MhdBaDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -22,9 +22,10 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up MHD BA from a config entry."""
     stop_id = entry.data[CONF_STOP_ID]
+    direction = entry.data.get(CONF_DIRECTION, DEFAULT_DIRECTION)
     session = async_get_clientsession(hass)
 
-    coordinator = MhdBaDataUpdateCoordinator(hass, session, stop_id)
+    coordinator = MhdBaDataUpdateCoordinator(hass, session, stop_id, direction)
 
     # Fetch initial data to validate connection
     await coordinator.async_config_entry_first_refresh()

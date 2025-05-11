@@ -6,6 +6,13 @@ DOMAIN = "mhd_ba"
 CONF_STOP_ID = "stop_id"
 CONF_MAX_DEPARTURES = "max_departures"
 CONF_FILTER_LINES = "filter_lines"
+CONF_DIRECTION = "direction"
+
+# Direction options
+DIRECTION_HERE = "here"
+DIRECTION_THERE = "there"
+DIRECTION_ALL = "all"
+DEFAULT_DIRECTION = DIRECTION_ALL
 
 # API Settings
 API_URL = "https://mapa.idsbk.sk/navigation/stops"

@@ -28,11 +28,16 @@ class MhdBaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Class to manage fetching MHD BA data."""
 
     def __init__(
-        self, hass: HomeAssistant, session: aiohttp.ClientSession, stop_id: str
+        self,
+        hass: HomeAssistant,
+        session: aiohttp.ClientSession,
+        stop_id: str,
+        direction: str,
     ) -> None:
         """Initialize the coordinator."""
         self.session = session
         self.stop_id = stop_id
+        self.direction = direction
         self.stop_name: str | None = None
         self.stopping_lines: list[str] = []
         self.last_update: str = ""
@@ -141,6 +146,7 @@ class MhdBaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Check if we got a valid response with departures key
             if "departures" not in response_json:
                 _LOGGER.error("Invalid response format, missing departures")
-                return {[]}
+                return []
+
             self.last_update = dt_util.now().strftime("%d.%m.%Y %H:%M:%S")
             return response_json["departures"]

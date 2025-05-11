@@ -7,10 +7,12 @@
         "data": {
           "stop_id": "Bus Stop ID",
           "max_departures": "Maximum number of departures (1-1000)",
-          "filter_lines": "Filter Lines"
+          "filter_lines": "Filter Lines",
+          "direction": "Direction"
         },
         "data_description": {
-          "filter_lines": "Display only specific lines (comma or semicolon-separated list of line numbers). Leave empty to show all lines. \nExample: 41,5,N33 or 5;7"
+          "filter_lines": "Display only specific lines (comma or semicolon-separated list of line numbers). Leave empty to show all lines. \nExample: 41,5,N33 or 5;7",
+          "direction": "Direction of the bus line. Lines have direction here or there in source data. When you want to show only one direction, try one value. When its not correct one, use another."
         }
       }
     },

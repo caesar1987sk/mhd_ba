@@ -17,10 +17,15 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     API_TIMEOUT,
+    CONF_DIRECTION,
     CONF_FILTER_LINES,
     CONF_MAX_DEPARTURES,
     CONF_STOP_ID,
+    DEFAULT_DIRECTION,
     DEFAULT_MAX_DEPARTURES,
+    DIRECTION_ALL,
+    DIRECTION_HERE,
+    DIRECTION_THERE,
     DOMAIN,
     STOP_INFO_API_ENDPOINT,
 )
@@ -65,14 +70,22 @@ def parse_filter_lines(filter_lines: str) -> list[str]:
     return [line.strip() for line in lines if line.strip()]
 
 
-def generate_unique_id(stop_id: str, filter_lines: list[str]) -> str:
-    """Generate a unique ID combining stop ID and filtered lines."""
-    if not filter_lines:
-        return stop_id
+def generate_unique_id(stop_id: str, filter_lines: list[str], direction: str) -> str:
+    """Generate a unique ID combining stop ID, filtered lines, and direction."""
+    # Start with stop_id as base
+    unique_id_parts = [stop_id]
 
-    # Sort to ensure consistent IDs regardless of input order
-    sorted_lines = sorted(filter_lines)
-    return f"{stop_id}_{'-'.join(sorted_lines)}"
+    # Add sorted lines if present
+    if filter_lines:
+        # Sort to ensure consistent IDs regardless of input order
+        sorted_lines = sorted(filter_lines)
+        unique_id_parts.append("-".join(sorted_lines))
+
+    # Add direction if it's not the default "all"
+    if direction != DIRECTION_ALL:
+        unique_id_parts.append(direction)
+
+    return "_".join(unique_id_parts)
 
 
 class MhdBaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -100,7 +113,9 @@ class MhdBaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     user_input[CONF_FILTER_LINES] = filter_lines
 
                 # Generate unique ID combining stop_id and filter_lines
-                unique_id = generate_unique_id(stop_id, filter_lines)
+                unique_id = generate_unique_id(
+                    stop_id, filter_lines, user_input[CONF_DIRECTION]
+                )
 
                 # Check if this combination is already configured
                 await self.async_set_unique_id(unique_id)
@@ -110,6 +125,15 @@ class MhdBaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 title = f"Bus Stop {stop_id}"
                 if filter_lines:
                     title += f" (Lines: {', '.join(filter_lines)})"
+
+                # Add direction to the title if it's not "all"
+                if user_input[CONF_DIRECTION] != DIRECTION_ALL:
+                    direction_name = (
+                        "direction here"
+                        if user_input[CONF_DIRECTION] == DIRECTION_HERE
+                        else "direction there"
+                    )
+                    title += f" {direction_name}"
 
                 return self.async_create_entry(
                     title=title,
@@ -137,6 +161,9 @@ class MhdBaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     config_entries.vol.Optional(
                         CONF_FILTER_LINES, description={"suggested_value": ""}
                     ): str,
+                    config_entries.vol.Optional(
+                        CONF_DIRECTION, default=DEFAULT_DIRECTION
+                    ): vol.In([DIRECTION_ALL, DIRECTION_HERE, DIRECTION_THERE]),
                 }
             ),
             errors=errors,

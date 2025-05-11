@@ -16,7 +16,15 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .config_flow import generate_unique_id
-from .const import CONF_FILTER_LINES, CONF_MAX_DEPARTURES, CONF_STOP_ID, DOMAIN
+from .const import (
+    CONF_DIRECTION,
+    CONF_FILTER_LINES,
+    CONF_MAX_DEPARTURES,
+    CONF_STOP_ID,
+    DIRECTION_ALL,
+    DIRECTION_HERE,
+    DOMAIN,
+)
 from .coordinator import MhdBaDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -73,9 +81,12 @@ class MhdBaDeparturesSensor(
         super().__init__(coordinator)
         self.entity_description = entity_description
 
+        # Get direction from entry data
+        self._direction = entry.data.get(CONF_DIRECTION, DIRECTION_ALL)
+
         # Generate unique ID using the same function as in config_flow
         stop_id = entry.data.get(CONF_STOP_ID)
-        base_unique_id = generate_unique_id(stop_id, filter_lines)
+        base_unique_id = generate_unique_id(stop_id, filter_lines, self._direction)
         self._attr_unique_id = f"{base_unique_id}_{entity_description.key}"
 
         stop_name = (
@@ -89,6 +100,16 @@ class MhdBaDeparturesSensor(
         name = f"Bus Stop {stop_name} {entity_description.name}"
         if filter_lines:
             name += f" (Lines: {', '.join(filter_lines)})"
+
+        # Add direction to the name if it's not "all"
+        if self._direction != DIRECTION_ALL:
+            direction_name = (
+                "direction here"
+                if self._direction == DIRECTION_HERE
+                else "direction there"
+            )
+            name += f" {direction_name}"
+
         self._attr_name = name
 
         self._stop_id = self.coordinator.stop_id
@@ -132,16 +153,12 @@ class MhdBaDeparturesSensor(
         if not self.coordinator.data or "departures" not in self.coordinator.data:
             return None
 
-        # Get departures and filter if needed
-        filtered_departures = (
-            [
-                departure
-                for departure in self.coordinator.data["departures"]
-                if self._should_include_departure(departure)
-            ]
-            if self._filter_lines
-            else self.coordinator.data["departures"]
-        )
+        # Apply both line and direction filtering
+        filtered_departures = [
+            departure
+            for departure in self.coordinator.data["departures"]
+            if self._should_include_departure(departure)
+        ]
 
         # No departures available
         if not filtered_departures:
@@ -184,12 +201,38 @@ class MhdBaDeparturesSensor(
         return f"{line} -> {destination} in {minutes_until_departure} min"
 
     def _should_include_departure(self, departure: dict[str, Any]) -> bool:
-        """Check if departure should be included based on filter_lines."""
-        if not self._filter_lines:
-            return True
+        """Check if departure should be included based on filter_lines and direction.
 
-        line = departure.get("timeTableTrip", {}).get("timeTableLine", {}).get("line")
-        return line in self._filter_lines if line else False
+        Args:
+            departure: The departure data
+
+        Returns:
+            True if the departure should be included, False otherwise
+
+        """
+        # First check line filter
+        if self._filter_lines:
+            line = (
+                departure.get("timeTableTrip", {}).get("timeTableLine", {}).get("line")
+            )
+            if not line or line not in self._filter_lines:
+                return False
+
+        # Then check direction filter
+        if self._direction != DIRECTION_ALL:
+            departure_direction = departure.get("timeTableTrip", {}).get(
+                "ezTripDirection"
+            )
+
+            # If direction is "here", only include arrivals
+            if self._direction == DIRECTION_HERE and departure_direction != "here":
+                return False
+
+            # If direction is "there", only include departures
+            if self._direction != DIRECTION_HERE and departure_direction == "here":
+                return False
+
+        return True
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -201,6 +244,7 @@ class MhdBaDeparturesSensor(
             "stopping_lines": [],
             "max_departures": self._max_departures,
             "filter_lines": self._filter_lines,
+            "direction": self.coordinator.direction,
         }
 
         if not self.coordinator.data:
@@ -218,16 +262,12 @@ class MhdBaDeparturesSensor(
         if "departures" in self.coordinator.data:
             attributes["departures"] = []
 
-            # Apply line filter if specified
-            filtered_departures = (
-                [
-                    departure
-                    for departure in self.coordinator.data["departures"]
-                    if self._should_include_departure(departure)
-                ]
-                if self._filter_lines
-                else self.coordinator.data["departures"]
-            )
+            # Filter departures using the _should_include_departure method
+            filtered_departures = [
+                departure
+                for departure in self.coordinator.data["departures"]
+                if self._should_include_departure(departure)
+            ]
 
             # Apply max_departures limit
             for departure in filtered_departures[: self._max_departures]:
@@ -281,6 +321,9 @@ class MhdBaDeparturesSensor(
                             "destinationStopName", "Unknown"
                         ),
                         "platform": departure.get("platformNumber", None),
+                        "direction": departure.get("timeTableTrip", {}).get(
+                            "ezTripDirection", None
+                        ),
                     }
                 )
         return attributes
