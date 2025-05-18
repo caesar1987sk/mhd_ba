@@ -1,7 +1,7 @@
 {
   "domain": "mhd_ba",
-  "name": "MHD BA Bus Departures",
-  "documentation": "https://github.com/home-assistant/core/tree/dev/config/custom_components/mhd_ba",
+  "name": "MHD BA Departures",
+  "documentation": "https://github.com/caesar1987sk/mhd_ba",
   "dependencies": [],
   "codeowners": [],
   "requirements": [],
