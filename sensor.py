@@ -273,34 +273,54 @@ class MhdBaDeparturesSensor(
                         self._calculate_time_until_departure(departure_calculated)
                     )
 
+                planned_local_dt = (
+                    dt_util.as_local(
+                        datetime.fromtimestamp(
+                            planned_timestamp or 0,
+                            tz=dt_util.UTC,
+                        )
+                    )
+                    if planned_timestamp
+                    else None
+                )
+
+                calculated_local_dt = (
+                    dt_util.as_local(
+                        datetime.fromtimestamp(
+                            departure_calculated or 0,
+                            tz=dt_util.UTC,
+                        )
+                    )
+                    if departure_calculated
+                    else None
+                )
+
                 attributes["departures"].append(
                     {
                         "line": departure.get("timeTableTrip", {})
                         .get("timeTableLine", {})
                         .get("line", "Unknown"),
                         "planed_departure": planned_timestamp,
-                        "planed_departure_formatted": dt_util.as_local(
-                            datetime.fromtimestamp(
-                                planned_timestamp or 0,
-                                tz=dt_util.UTC,
-                            )
-                        ).strftime("%H:%M")
-                        if planned_timestamp
+                        "planed_departure_formatted": planned_local_dt.strftime("%H:%M")
+                        if planned_local_dt
+                        else None,
+                        "planned_departure_hour": planned_local_dt.strftime("%H")
+                        if planned_local_dt
+                        else None,
+                        "planned_departure_minute": planned_local_dt.strftime("%M")
+                        if planned_local_dt
                         else None,
                         "delay": delay_minutes,
-                        "departure_calculated": departure_calculated,
-                        "calculated_departure_formatted": dt_util.as_local(
-                            datetime.fromtimestamp(
-                                departure_calculated or 0,
-                                tz=dt_util.UTC,
-                            )
-                        ).strftime("%H:%M")
+                        "actual_departure": departure_calculated,
+                        "actual_departure_formatted": calculated_local_dt.strftime(
+                            "%H:%M"
+                        )
+                        if calculated_local_dt
+                        else None,
+                        "seconds_until_actual_departure": time_until_calculated_departure
                         if departure_calculated
                         else None,
-                        "seconds_until_departure": time_until_calculated_departure
-                        if departure_calculated
-                        else None,
-                        "minutes_until_departure": int(
+                        "minutes_until_actual_departure": int(
                             time_until_calculated_departure / 60
                         )
                         if departure_calculated and time_until_calculated_departure
